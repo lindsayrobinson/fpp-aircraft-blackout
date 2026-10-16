@@ -1,4 +1,4 @@
-# Aircraft Blackout for FPP — prototype v0.2.0
+# Aircraft Blackout for FPP — prototype v0.2.1
 
 Monitor a local ADS-B receiver and continuously override selected moving-head DMX channels in FPP. Intended path: FPP → Falcon F16v4 → DMX fixtures. The F16v4's existing input protocol and universe/channel mapping stay in use.
 
@@ -70,6 +70,12 @@ Restart FPPD through FPP and refresh the browser page. Existing receiver URL, lo
 
 Extract the source so the installer is exactly `/home/fpp/media/plugins/fpp-aircraft-blackout/scripts/fpp_install.sh`. GitHub source archives may add a `-main` suffix to the folder; rename it before installation. Ensure the `fpp` user owns the plugin directory, run the installation script with `sudo`, and follow the same restart and FPP page steps above.
 
+## Stale-position option
+
+In the FPP settings page, **Request blackout for stale aircraft positions** is enabled by default, including after upgrading an older configuration. Uncheck it and save to ignore coordinates older than **Maximum position age**. The aircraft table labels those rows **STALE — ignored**.
+
+This also ignores a stale record whose last fresh position was inside the exclusion zone; it is not evidence that the aircraft has left. Fresh aircraft inside the zone still request blackout. Records with no usable coordinates/position age, completely lost tracks, stale or unavailable receiver feeds and manual blackout still request blackout. If an earlier fault is latched, inspect the airspace and acknowledge it when the button becomes available; the normal clear delay still applies.
+
 ## Configure
 
 1. Leave **Enable actual channel overrides** unchecked during initial observation.
@@ -110,7 +116,7 @@ Not all aircraft carry ADS-B OUT; one receiver cannot position every Mode-S-only
 ## Operation and troubleshooting
 
 - Status shows **blackout requested** separately from **observation/enforcement**. It describes the decision and software activity, not confirmation of optical darkness.
-- Unknown-position local aircraft intentionally cause blackout, even if their distance cannot be determined. This may interrupt the show frequently; do not solve that by assuming they are far away.
+- Aircraft with no usable position intentionally cause blackout because their distance cannot be determined. The stale-position checkbox affects valid coordinates that have become too old; it does not bypass records with no usable position.
 - Lost-track faults do not clear just because a record ages out of the decoder. Acknowledge after checking the receiver and airspace; acknowledgement is accepted only when a fresh poll has no active/unknown-position aircraft, and still starts a full clear delay.
 - Logs: `sudo journalctl -u fpp-aircraft-blackout -n 100 --no-pager`
 - Service: `sudo systemctl status fpp-aircraft-blackout`

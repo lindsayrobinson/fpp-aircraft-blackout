@@ -20,6 +20,7 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 MAX_CHANNEL = 8192 * 1024
 DEFAULT = dict(receiver_url='', latitude=None, longitude=None, radius_km=15.0,
                clear_delay_s=60.0, max_feed_age_s=5.0, max_position_age_s=5.0,
+               blackout_on_stale_positions=True,
                enforce=False, manual_blackout=False, channels=[])
 LOG = logging.getLogger('aircraft-blackout')
 
@@ -50,7 +51,7 @@ def validate(raw):
         raise ValueError('Invalid settings fields')
     c = copy.deepcopy(DEFAULT)
     c.update(raw)
-    for name in ('enforce', 'manual_blackout'):
+    for name in ('enforce', 'manual_blackout', 'blackout_on_stale_positions'):
         if type(c[name]) is not bool:
             raise ValueError(f'{name} must be true or false')
     u = urlsplit(c['receiver_url'])
@@ -131,6 +132,7 @@ class Detector:
             raise ValueError('Receiver feed is frozen')
         active, unknown, aircraft = set(), set(), []
         fresh_outside = set()
+        ignored_stale = set()
         for a in feed['aircraft']:
             if not isinstance(a, dict) or not isinstance(a.get('hex'), str) or not a['hex']:
                 raise ValueError('Malformed aircraft record')
@@ -147,13 +149,20 @@ class Detector:
             d = distance_km(c['latitude'], c['longitude'], lat, lon)
             fresh = age + max(0, wall-stamp) <= c['max_position_age_s']
             if not fresh:
-                unknown.add(ident)
+                if c['blackout_on_stale_positions']:
+                    unknown.add(ident)
+                else:
+                    ignored_stale.add(ident)
             elif d <= c['radius_km']:
                 active.add(ident)
             else:
                 fresh_outside.add(ident)
-            aircraft.append(dict(hex=ident, flight=str(a.get('flight', '')).strip(), distance_km=round(d, 2), position_age_s=round(age, 1), fresh=fresh))
+            aircraft.append(dict(hex=ident, flight=str(a.get('flight', '')).strip(), distance_km=round(d, 2), position_age_s=round(age, 1), fresh=fresh, stale_ignored=ident in ignored_stale))
         self.hazards -= fresh_outside
+        # Explicit user policy: old coordinates are ignored even if the last
+        # fresh position was inside the zone. An existing fault latch still
+        # needs acknowledgement; completely lost/positionless tracks still block.
+        self.hazards -= ignored_stale
         self.hazards |= active
         missing = self.hazards - active
         # Positionless local traffic cannot be proven outside the zone.
