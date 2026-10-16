@@ -69,12 +69,15 @@ with tempfile.TemporaryDirectory() as temporary:
             except HTTPError as e: assert e.code==code, (e.code, e.read())
         s=api('status')
         c=s['config']
-        c.update(latitude=-27.25,longitude=153.1,radius_km=20,blackout_on_stale_positions=False,channels=[{'channel':8,'value':0}])
+        c.update(latitude=-27.25,longitude=153.1,radius_km=20,blackout_on_stale_positions=False,ignore_aircraft_without_position=True,channels=[{'channel':8,'value':0}])
         assert api('config',c)['ok']
         s=api('status')
         assert s['config']['radius_km']==20
         assert s['config']['blackout_on_stale_positions'] is False
         assert 'ab-blackout_on_stale_positions' in html
+        assert s['config']['ignore_aircraft_without_position'] is True
+        assert 'ab-ignore_aircraft_without_position' in html
+        assert json.loads((cfg/'aircraft-blackout.json').read_text())['ignore_aircraft_without_position'] is True
         assert json.loads((cfg/'aircraft-blackout.json').read_text())['latitude']==-27.25
         assert api('manual',{'blackout':True})['ok']
         assert api('status')['config']['manual_blackout']

@@ -63,7 +63,7 @@ class DetectionTests(unittest.TestCase):
         self.assertTrue(blocked)
         self.assertFalse(self.d.can_ack)
         self.assertIn('missing, invalid or stale',reason)
-        self.assertIn('missing coordinates',self.d.acknowledge_reason)
+        self.assertIn('ignore-aircraft-without-position',self.d.acknowledge_reason)
         self.assertEqual(rows[0]['hex'],'abc')
         self.assertIsNone(rows[0]['distance_km'])
         self.assertTrue(rows[0]['blocking'])
@@ -143,6 +143,47 @@ class DetectionTests(unittest.TestCase):
         self.run_feed(feed(a))
         self.c['blackout_on_stale_positions']=True
         self.assertTrue(self.run_feed(feed(a,stamp=102),2,102))
+    def test_ignore_positionless_clears_after_hold_and_labels_row(self):
+        self.c['ignore_aircraft_without_position']=True
+        self.assertTrue(self.run_feed(feed({'hex':'abc'}),0))
+        blocked,_,rows=self.d.evaluate(feed({'hex':'abc'},stamp=102),self.c,102,2)
+        self.assertFalse(blocked)
+        self.assertFalse(self.d.fault_latched)
+        self.assertTrue(rows[0]['position_ignored'])
+        self.assertFalse(rows[0]['blocking'])
+        self.assertIn('ignored',rows[0]['position_status'])
+    def test_ignore_positionless_handles_invalid_coords_and_age(self):
+        self.c['ignore_aircraft_without_position']=True
+        for values in ({'lat':None},{'lon':999},{'seen_pos':None}):
+            a=plane();a.update(values)
+            with self.subTest(values=values):
+                _,_,rows=self.d.evaluate(feed(a),self.c,100,0)
+                self.assertTrue(rows[0]['position_ignored'])
+        self.assertFalse(self.d.fault_latched)
+    def test_ignore_positionless_previous_nearby_and_fault_need_ack(self):
+        self.run_feed(feed(plane()))
+        self.run_feed(feed({'hex':'abc123'},stamp=101),1,101)
+        self.c['ignore_aircraft_without_position']=True
+        self.assertTrue(self.run_feed(feed({'hex':'abc123'},stamp=102),2,102))
+        self.assertTrue(self.d.can_ack)
+        self.d.acknowledge()
+        self.assertTrue(self.run_feed(feed({'hex':'abc123'},stamp=103),3,103))
+        self.assertFalse(self.run_feed(feed({'hex':'abc123'},stamp=105),5,105))
+    def test_ignore_positionless_does_not_ignore_fresh_stale_or_lost(self):
+        self.c['ignore_aircraft_without_position']=True
+        self.assertTrue(self.run_feed(feed(plane())))
+        self.assertTrue(self.run_feed(feed(stamp=101),1,101))
+        self.assertTrue(self.d.fault_latched)
+        self.d=m.Detector()
+        old=plane();old['seen_pos']=20
+        self.assertTrue(self.run_feed(feed(old)))
+        self.assertFalse(self.d.can_ack)
+    def test_reenable_positionless_protection(self):
+        self.c['ignore_aircraft_without_position']=True
+        self.run_feed(feed({'hex':'abc'}))
+        self.c['ignore_aircraft_without_position']=False
+        self.assertTrue(self.run_feed(feed({'hex':'abc'},stamp=102),2,102))
+        self.assertFalse(self.d.can_ack)
     def test_all_aircraft_must_clear(self):
         b=plane();b['hex']='def456'
         self.run_feed(feed(plane(),b))
@@ -160,6 +201,12 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(m.validate(old)['blackout_on_stale_positions'])
         self.assertFalse(m.validate({'blackout_on_stale_positions':False})['blackout_on_stale_positions'])
         with self.assertRaises(ValueError):m.validate({'blackout_on_stale_positions':'false'})
+    def test_positionless_option_defaults_and_validation(self):
+        self.assertFalse(m.validate({})['ignore_aircraft_without_position'])
+        old=config();old.pop('ignore_aircraft_without_position')
+        self.assertFalse(m.validate(old)['ignore_aircraft_without_position'])
+        self.assertTrue(m.validate({'ignore_aircraft_without_position':True})['ignore_aircraft_without_position'])
+        with self.assertRaises(ValueError):m.validate({'ignore_aircraft_without_position':'true'})
     def test_invalid_settings(self):
         for key,value in [('latitude',91),('longitude',181),('radius_km',0),('radius_km',float('nan')),('enforce','yes'),('channels',[{'channel':0,'value':0}]),('channels',[{'channel':1,'value':256}]),('receiver_url','http://8.8.8.8/data/aircraft.json'),('receiver_url','http://receiver.local/data/aircraft.json')]:
             c=config();c[key]=value
