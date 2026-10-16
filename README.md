@@ -78,7 +78,7 @@ This also ignores a stale record whose last fresh position was inside the exclus
 
 ## Aircraft with no usable coordinates
 
-The **Ignore aircraft with no usable coordinates** checkbox is off by default, including on upgrades. Enable it and save to ignore received aircraft records whose coordinates or position age are missing or invalid. The table labels these **No usable position — ignored**. This also ignores a currently received record whose last known position was inside the zone; it does not establish that the aircraft has left. Fresh aircraft inside the radius, stale positions (unless separately ignored), completely lost tracks and receiver failures still request blackout. An existing fault requires acknowledgement once available, followed by the normal clear delay.
+The **Request blackout for aircraft with no usable coordinates** checkbox is enabled by default. Uncheck it and save to ignore received aircraft records whose coordinates or position age are missing or invalid. The table labels these **No usable position — ignored**. Existing ignore preferences are preserved when upgrading; the checkbox displays the inverse of the stored ignore setting. This also ignores a currently received record whose last known position was inside the zone; it does not establish that the aircraft has left. Fresh aircraft inside the radius, stale positions (unless separately ignored), completely lost tracks and receiver failures still request blackout. An existing fault requires acknowledgement once available, followed by the normal clear delay.
 
 ## Configure
 
@@ -120,7 +120,7 @@ Not all aircraft carry ADS-B OUT; one receiver cannot position every Mode-S-only
 ## Operation and troubleshooting
 
 - Status shows **blackout requested** separately from **observation/enforcement**. It describes the decision and software activity, not confirmation of optical darkness.
-- Aircraft with no usable position cause blackout by default because their distance cannot be determined. Enable **Ignore aircraft with no usable coordinates** to ignore those received records. The stale-position checkbox separately affects valid coordinates that have become too old.
+- Aircraft with no usable position cause blackout by default because their distance cannot be determined. Uncheck **Request blackout for aircraft with no usable coordinates** to ignore those received records. The stale-position checkbox separately affects valid coordinates that have become too old.
 - Lost-track faults do not clear just because a record ages out of the decoder. Acknowledge after checking the receiver and airspace; acknowledgement is accepted only when a fresh poll has no active/unknown-position aircraft, and still starts a full clear delay.
 - Logs: `sudo journalctl -u fpp-aircraft-blackout -n 100 --no-pager`
 - Service: `sudo systemctl status fpp-aircraft-blackout`
