@@ -105,6 +105,7 @@ class Detector:
         self.last_feed_advance = None
         self.latest_blocked = True
         self.can_ack = False
+        self.acknowledge_reason = 'Waiting for valid receiver data before acknowledgement is available'
 
     def fault(self):
         if not self.fault_latched:
@@ -113,6 +114,7 @@ class Detector:
         self.clear_since = None
         self.latest_blocked = True
         self.can_ack = False
+        self.acknowledge_reason = 'Receiver data must be valid and aircraft positions resolved before acknowledgement is available'
 
     def acknowledge(self):
         # Does not clear an actively detected hazard; faults after this request need a new acknowledgement.
@@ -143,8 +145,12 @@ class Detector:
                 lat = number(lat, 'aircraft latitude', -90, 90)
                 lon = number(lon, 'aircraft longitude', -180, 180)
                 age = number(age, 'position age', 0, 1e9)
-            except ValueError:
+            except ValueError as exc:
                 unknown.add(ident)
+                aircraft.append(dict(hex=ident, flight=str(a.get('flight', '')).strip(),
+                                     distance_km=None, position_age_s=None, fresh=False,
+                                     stale_ignored=False, blocking=True,
+                                     position_status='No usable position: ' + str(exc).split(':')[0]))
                 continue
             d = distance_km(c['latitude'], c['longitude'], lat, lon)
             fresh = age + max(0, wall-stamp) <= c['max_position_age_s']
@@ -157,7 +163,10 @@ class Detector:
                 active.add(ident)
             else:
                 fresh_outside.add(ident)
-            aircraft.append(dict(hex=ident, flight=str(a.get('flight', '')).strip(), distance_km=round(d, 2), position_age_s=round(age, 1), fresh=fresh, stale_ignored=ident in ignored_stale))
+            position_status = ('Fresh position' if fresh else
+                               'Stale position — ignored' if ident in ignored_stale else
+                               'Stale position — blackout')
+            aircraft.append(dict(hex=ident, flight=str(a.get('flight', '')).strip(), distance_km=round(d, 2), position_age_s=round(age, 1), fresh=fresh, stale_ignored=ident in ignored_stale, blocking=ident in active or ident in unknown, position_status=position_status))
         self.hazards -= fresh_outside
         # Explicit user policy: old coordinates are ignored even if the last
         # fresh position was inside the zone. An existing fault latch still
@@ -176,7 +185,12 @@ class Detector:
         blocked = bool(active or unknown or self.hazards or self.fault_latched)
         if blocked:
             self.clear_since = None
-            reason = 'Aircraft inside exclusion zone' if active else 'Uncertain aircraft position / fault latched: inspect airspace, then acknowledge'
+            if active:
+                reason = f'Aircraft inside exclusion zone: {len(active)}'
+            elif unknown:
+                reason = f'Blackout held: {len(unknown)} aircraft with missing, invalid or stale positions; see aircraft table'
+            else:
+                reason = 'Previous fault latched; inspect airspace, then acknowledge to begin the clear delay'
         else:
             if self.clear_since is None:
                 self.clear_since = mono
@@ -184,8 +198,16 @@ class Detector:
             blocked = remaining > 0
             reason = f'Clear hold: {remaining:.0f}s remaining' if blocked else 'No tracked aircraft in exclusion zone'
         self.can_ack = self.fault_latched and not unknown and not active
+        if active:
+            self.acknowledge_reason = 'Acknowledgement unavailable while aircraft are inside the exclusion zone'
+        elif unknown:
+            self.acknowledge_reason = 'Acknowledgement unavailable: resolve aircraft rows marked blackout or no usable position. The stale-position option does not ignore missing coordinates.'
+        elif self.can_ack:
+            self.acknowledge_reason = 'Receiver data now permits acknowledgement. Check the airspace first; the clear delay still applies.'
+        else:
+            self.acknowledge_reason = 'No latched fault needs acknowledgement'
         self.latest_blocked = blocked
-        return blocked, reason, sorted(aircraft, key=lambda a: a['distance_km'])[:100]
+        return blocked, reason, sorted(aircraft, key=lambda a: (not a['blocking'], a['distance_km'] if a['distance_km'] is not None else -1))[:100]
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -272,6 +294,7 @@ class App:
             s = copy.deepcopy(self.status)
             s['config'] = copy.deepcopy(self.config)
             s['can_acknowledge'] = self.detector.can_ack
+            s['acknowledge_reason'] = self.detector.acknowledge_reason
             try:
                 native = json.loads((self.runtime / 'native-status.json').read_text())
                 native['heartbeat_fresh'] = 0 <= boottime_ms()-native['heartbeat_ms'] < 3000
