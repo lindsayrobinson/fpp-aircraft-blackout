@@ -57,6 +57,39 @@ class DetectionTests(unittest.TestCase):
     def test_unknown_position_blocks_even_with_ack(self):
         self.d.acknowledge()
         self.assertTrue(self.run_feed(feed({'hex':'abc'})))
+    def test_unknown_position_is_visible_and_explains_disabled_ack(self):
+        self.c['blackout_on_stale_positions']=False
+        blocked,reason,rows=self.d.evaluate(feed({'hex':'abc'}),self.c,100,0)
+        self.assertTrue(blocked)
+        self.assertFalse(self.d.can_ack)
+        self.assertIn('missing, invalid or stale',reason)
+        self.assertIn('missing coordinates',self.d.acknowledge_reason)
+        self.assertEqual(rows[0]['hex'],'abc')
+        self.assertIsNone(rows[0]['distance_km'])
+        self.assertTrue(rows[0]['blocking'])
+        self.assertIn('No usable position',rows[0]['position_status'])
+    def test_resolved_unknown_position_enables_ack_and_clear_delay(self):
+        self.run_feed(feed({'hex':'abc'}))
+        self.assertTrue(self.run_feed(feed(stamp=101),1,101))
+        self.assertTrue(self.d.can_ack)
+        self.assertIn('permits acknowledgement',self.d.acknowledge_reason)
+        self.d.acknowledge()
+        self.assertTrue(self.run_feed(feed(stamp=102),2,102))
+        self.assertFalse(self.run_feed(feed(stamp=104),4,104))
+    def test_ignored_stale_does_not_hide_positionless_aircraft(self):
+        self.c['blackout_on_stale_positions']=False
+        old=plane(lon=154);old['seen_pos']=20
+        blocked,_,rows=self.d.evaluate(feed(old,{'hex':'unknown'}),self.c,100,0)
+        self.assertTrue(blocked)
+        self.assertFalse(self.d.can_ack)
+        self.assertEqual(rows[0]['hex'],'unknown')
+        self.assertTrue(rows[1]['stale_ignored'])
+    def test_feed_fault_disables_ack_after_previous_recovery(self):
+        self.d.fault();self.run_feed(feed())
+        self.assertTrue(self.d.can_ack)
+        self.d.fault()
+        self.assertFalse(self.d.can_ack)
+        self.assertIn('Receiver data must be valid',self.d.acknowledge_reason)
     def test_stale_feed_and_future_time_rejected(self):
         for stamp in [90,110,float('nan')]:
             with self.assertRaises(ValueError): self.run_feed(feed(stamp=stamp))
