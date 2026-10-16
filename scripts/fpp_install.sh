@@ -19,7 +19,7 @@ After=network-online.target
 [Service]
 User=fpp
 Group=fpp
-ExecStart=/usr/bin/python3 /home/fpp/media/plugins/fpp-aircraft-blackout/monitor.py
+ExecStart=/usr/bin/python3 /home/fpp/media/plugins/fpp-aircraft-blackout/monitor.py --host 127.0.0.1
 Restart=always
 RestartSec=1
 RuntimeDirectory=aircraft-blackout
@@ -37,7 +37,7 @@ chmod +x "$PLUGIN_DIR/callbacks.sh" "$PLUGIN_DIR/scripts/"*.sh
 systemctl daemon-reload
 systemctl enable --now fpp-aircraft-blackout.service
 systemctl restart fpp-aircraft-blackout.service
-echo 'Installed. Restart FPPD when no show is running, then open http://FPP-IP:32380/'
-echo 'Username: admin. Retrieve your password with:'
-echo 'sudo cat /home/fpp/media/config/aircraft-blackout.key'
+echo 'Installed. Restart FPPD when no show is running, then open Status/Control -> Aircraft Blackout in FPP.'
+echo 'Direct page: http://FPP-IP/plugin.php?plugin=fpp-aircraft-blackout&page=index.php'
+echo 'Settings use FPP access controls; no separate panel login or port is required.'
 echo 'Observation mode is the default. Configure and bench-test before enabling enforcement.'
