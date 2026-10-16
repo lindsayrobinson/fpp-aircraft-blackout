@@ -38,6 +38,15 @@ with tempfile.TemporaryDirectory() as temporary:
     try:
         for _ in range(100):
             try:
+                if monitor.poll() is not None:
+                    raise AssertionError('Monitor process exited during startup')
+                # The key is written before the HTTP listener starts. Wait for
+                # the listener, not merely for the page to find that key.
+                try:
+                    urlopen('http://127.0.0.1:32380/api/status', timeout=1)
+                except HTTPError as error:
+                    if error.code != 401:
+                        raise
                 html = urlopen(url, timeout=1).read().decode()
                 if '__BLACKOUT_CONFIG__' not in html and 'const ui=' in html: break
             except OSError: pass
@@ -60,10 +69,12 @@ with tempfile.TemporaryDirectory() as temporary:
             except HTTPError as e: assert e.code==code, (e.code, e.read())
         s=api('status')
         c=s['config']
-        c.update(latitude=-27.25,longitude=153.1,radius_km=20,channels=[{'channel':8,'value':0}])
+        c.update(latitude=-27.25,longitude=153.1,radius_km=20,blackout_on_stale_positions=False,channels=[{'channel':8,'value':0}])
         assert api('config',c)['ok']
         s=api('status')
         assert s['config']['radius_km']==20
+        assert s['config']['blackout_on_stale_positions'] is False
+        assert 'ab-blackout_on_stale_positions' in html
         assert json.loads((cfg/'aircraft-blackout.json').read_text())['latitude']==-27.25
         assert api('manual',{'blackout':True})['ok']
         assert api('status')['config']['manual_blackout']

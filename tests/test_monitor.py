@@ -66,6 +66,50 @@ class DetectionTests(unittest.TestCase):
     def test_old_positions_block(self):
         a=plane();a['seen_pos']=9
         self.assertTrue(self.run_feed(feed(a)))
+    def test_stale_option_disabled_allows_clear_after_hold(self):
+        self.c['blackout_on_stale_positions']=False
+        a=plane();a['seen_pos']=9
+        self.assertTrue(self.run_feed(feed(a),0))
+        self.assertFalse(self.run_feed(feed(a,stamp=102),2,102))
+        self.assertFalse(self.d.fault_latched)
+    def test_ignored_stale_row_is_labelled(self):
+        self.c['blackout_on_stale_positions']=False
+        a=plane();a['seen_pos']=9
+        _,_,rows=self.d.evaluate(feed(a),self.c,100,0)
+        self.assertTrue(rows[0]['stale_ignored'])
+        self.assertFalse(rows[0]['fresh'])
+    def test_stale_option_disabled_ignores_previous_inside_position(self):
+        self.run_feed(feed(plane()),0)
+        self.c['blackout_on_stale_positions']=False
+        a=plane();a['seen_pos']=9
+        self.assertTrue(self.run_feed(feed(a,stamp=101),1,101))
+        self.assertFalse(self.run_feed(feed(a,stamp=103),3,103))
+    def test_stale_option_disabled_still_blocks_missing_positions(self):
+        self.c['blackout_on_stale_positions']=False
+        self.assertTrue(self.run_feed(feed({'hex':'abc'})))
+    def test_stale_option_disabled_still_blocks_fresh_aircraft(self):
+        self.c['blackout_on_stale_positions']=False
+        self.assertTrue(self.run_feed(feed(plane())))
+    def test_stale_option_disabled_still_blocks_completely_lost_tracks(self):
+        self.c['blackout_on_stale_positions']=False
+        self.run_feed(feed(plane()))
+        self.assertTrue(self.run_feed(feed(stamp=101),1,101))
+        self.assertTrue(self.d.fault_latched)
+    def test_stale_option_disabled_does_not_clear_existing_fault_latch(self):
+        a=plane();a['seen_pos']=9
+        self.run_feed(feed(a))
+        self.c['blackout_on_stale_positions']=False
+        self.assertTrue(self.run_feed(feed(a,stamp=101),1,101))
+        self.assertTrue(self.d.can_ack)
+        self.d.acknowledge()
+        self.assertTrue(self.run_feed(feed(a,stamp=102),2,102))
+        self.assertFalse(self.run_feed(feed(a,stamp=104),4,104))
+    def test_reenabling_stale_option_blocks_again(self):
+        self.c['blackout_on_stale_positions']=False
+        a=plane();a['seen_pos']=9
+        self.run_feed(feed(a))
+        self.c['blackout_on_stale_positions']=True
+        self.assertTrue(self.run_feed(feed(a,stamp=102),2,102))
     def test_all_aircraft_must_clear(self):
         b=plane();b['hex']='def456'
         self.run_feed(feed(plane(),b))
@@ -78,6 +122,11 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(m.validate({})['radius_km'],15)
         self.assertFalse(m.validate({})['enforce'])
         self.assertEqual(m.validate(config())['latitude'],-27.25)
+        self.assertTrue(m.validate({})['blackout_on_stale_positions'])
+        old=config();old.pop('blackout_on_stale_positions')
+        self.assertTrue(m.validate(old)['blackout_on_stale_positions'])
+        self.assertFalse(m.validate({'blackout_on_stale_positions':False})['blackout_on_stale_positions'])
+        with self.assertRaises(ValueError):m.validate({'blackout_on_stale_positions':'false'})
     def test_invalid_settings(self):
         for key,value in [('latitude',91),('longitude',181),('radius_km',0),('radius_km',float('nan')),('enforce','yes'),('channels',[{'channel':0,'value':0}]),('channels',[{'channel':1,'value':256}]),('receiver_url','http://8.8.8.8/data/aircraft.json'),('receiver_url','http://receiver.local/data/aircraft.json')]:
             c=config();c[key]=value
