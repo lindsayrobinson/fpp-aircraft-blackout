@@ -74,7 +74,11 @@ Extract the source so the installer is exactly `/home/fpp/media/plugins/fpp-airc
 
 In the FPP settings page, **Request blackout for stale aircraft positions** is enabled by default, including after upgrading an older configuration. Uncheck it and save to ignore coordinates older than **Maximum position age**. The aircraft table labels those rows **STALE — ignored**.
 
-This also ignores a stale record whose last fresh position was inside the exclusion zone; it is not evidence that the aircraft has left. Fresh aircraft inside the zone still request blackout. Records with no usable coordinates/position age, completely lost tracks, stale or unavailable receiver feeds and manual blackout still request blackout. If an earlier fault is latched, inspect the airspace and acknowledge it when the button becomes available; the normal clear delay still applies.
+This also ignores a stale record whose last fresh position was inside the exclusion zone; it is not evidence that the aircraft has left. Fresh aircraft inside the zone still request blackout. Records with no usable coordinates/position age have a separate option below. Completely lost tracks, stale or unavailable receiver feeds and manual blackout still request blackout. If an earlier fault is latched, inspect the airspace and acknowledge it when the button becomes available; the normal clear delay still applies.
+
+## Aircraft with no usable coordinates
+
+The **Ignore aircraft with no usable coordinates** checkbox is off by default, including on upgrades. Enable it and save to ignore received aircraft records whose coordinates or position age are missing or invalid. The table labels these **No usable position — ignored**. This also ignores a currently received record whose last known position was inside the zone; it does not establish that the aircraft has left. Fresh aircraft inside the radius, stale positions (unless separately ignored), completely lost tracks and receiver failures still request blackout. An existing fault requires acknowledgement once available, followed by the normal clear delay.
 
 ## Configure
 
@@ -116,7 +120,7 @@ Not all aircraft carry ADS-B OUT; one receiver cannot position every Mode-S-only
 ## Operation and troubleshooting
 
 - Status shows **blackout requested** separately from **observation/enforcement**. It describes the decision and software activity, not confirmation of optical darkness.
-- Aircraft with no usable position intentionally cause blackout because their distance cannot be determined. The stale-position checkbox affects valid coordinates that have become too old; it does not bypass records with no usable position.
+- Aircraft with no usable position cause blackout by default because their distance cannot be determined. Enable **Ignore aircraft with no usable coordinates** to ignore those received records. The stale-position checkbox separately affects valid coordinates that have become too old.
 - Lost-track faults do not clear just because a record ages out of the decoder. Acknowledge after checking the receiver and airspace; acknowledgement is accepted only when a fresh poll has no active/unknown-position aircraft, and still starts a full clear delay.
 - Logs: `sudo journalctl -u fpp-aircraft-blackout -n 100 --no-pager`
 - Service: `sudo systemctl status fpp-aircraft-blackout`

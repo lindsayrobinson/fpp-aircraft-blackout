@@ -20,7 +20,7 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 MAX_CHANNEL = 8192 * 1024
 DEFAULT = dict(receiver_url='', latitude=None, longitude=None, radius_km=15.0,
                clear_delay_s=60.0, max_feed_age_s=5.0, max_position_age_s=5.0,
-               blackout_on_stale_positions=True,
+               blackout_on_stale_positions=True, ignore_aircraft_without_position=False,
                enforce=False, manual_blackout=False, channels=[])
 LOG = logging.getLogger('aircraft-blackout')
 
@@ -51,7 +51,7 @@ def validate(raw):
         raise ValueError('Invalid settings fields')
     c = copy.deepcopy(DEFAULT)
     c.update(raw)
-    for name in ('enforce', 'manual_blackout', 'blackout_on_stale_positions'):
+    for name in ('enforce', 'manual_blackout', 'blackout_on_stale_positions', 'ignore_aircraft_without_position'):
         if type(c[name]) is not bool:
             raise ValueError(f'{name} must be true or false')
     u = urlsplit(c['receiver_url'])
@@ -135,6 +135,7 @@ class Detector:
         active, unknown, aircraft = set(), set(), []
         fresh_outside = set()
         ignored_stale = set()
+        ignored_positionless = set()
         for a in feed['aircraft']:
             if not isinstance(a, dict) or not isinstance(a.get('hex'), str) or not a['hex']:
                 raise ValueError('Malformed aircraft record')
@@ -146,11 +147,15 @@ class Detector:
                 lon = number(lon, 'aircraft longitude', -180, 180)
                 age = number(age, 'position age', 0, 1e9)
             except ValueError as exc:
-                unknown.add(ident)
+                ignored = c['ignore_aircraft_without_position']
+                if ignored:
+                    ignored_positionless.add(ident)
+                else:
+                    unknown.add(ident)
                 aircraft.append(dict(hex=ident, flight=str(a.get('flight', '')).strip(),
                                      distance_km=None, position_age_s=None, fresh=False,
-                                     stale_ignored=False, blocking=True,
-                                     position_status='No usable position: ' + str(exc).split(':')[0]))
+                                     stale_ignored=False, position_ignored=ignored, blocking=not ignored,
+                                     position_status=('No usable position — ignored: ' if ignored else 'No usable position: ') + str(exc).split(':')[0]))
                 continue
             d = distance_km(c['latitude'], c['longitude'], lat, lon)
             fresh = age + max(0, wall-stamp) <= c['max_position_age_s']
@@ -170,8 +175,11 @@ class Detector:
         self.hazards -= fresh_outside
         # Explicit user policy: old coordinates are ignored even if the last
         # fresh position was inside the zone. An existing fault latch still
-        # needs acknowledgement; completely lost/positionless tracks still block.
+        # needs acknowledgement; completely lost tracks still block.
         self.hazards -= ignored_stale
+        # Explicit policy also ignores a currently received positionless record,
+        # including a previously nearby track. It does not prove the aircraft left.
+        self.hazards -= ignored_positionless
         self.hazards |= active
         missing = self.hazards - active
         # Positionless local traffic cannot be proven outside the zone.
@@ -201,7 +209,7 @@ class Detector:
         if active:
             self.acknowledge_reason = 'Acknowledgement unavailable while aircraft are inside the exclusion zone'
         elif unknown:
-            self.acknowledge_reason = 'Acknowledgement unavailable: resolve aircraft rows marked blackout or no usable position. The stale-position option does not ignore missing coordinates.'
+            self.acknowledge_reason = 'Acknowledgement unavailable: resolve aircraft rows marked blackout or no usable position. Review the stale-position and ignore-aircraft-without-position settings.'
         elif self.can_ack:
             self.acknowledge_reason = 'Receiver data now permits acknowledgement. Check the airspace first; the clear delay still applies.'
         else:
