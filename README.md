@@ -1,10 +1,12 @@
-# Aircraft Blackout for FPP — prototype v0.1.0
+# Aircraft Blackout for FPP — prototype v0.2.0
 
 Monitor a local ADS-B receiver and continuously override selected moving-head DMX channels in FPP. Intended path: FPP → Falcon F16v4 → DMX fixtures. The F16v4's existing input protocol and universe/channel mapping stay in use.
 
 **Built for FPP 10.x on Linux. Compile on the FPP device against its installed headers. This is a tested software prototype, not a certified aviation interlock; it has not yet been tested with your FPP, Falcon or fixtures.**
 
 ## Included
+
+- All settings, status and manual controls are embedded in FPP: **Status/Control → Aircraft Blackout**. No separate web panel or browser login.
 
 - Settings panel with display latitude and longitude in decimal degrees.
 - Configurable horizontal blackout radius; **15 km default, suggested only as a commissioning starting point**. This is not an aviation-approved safe distance. Assess local traffic, beam direction/intensity and end-to-end response before operation. No altitude cutoff: aircraft at any reported altitude within the radius trigger blackout.
@@ -31,27 +33,42 @@ http://RECEIVER-IP/tar1090/data/aircraft.json
 
 These are examples, not a confirmed address for your receiver. Open the actual URL: it must return JSON with `now` and an `aircraft` array. Aircraft records use `hex`, `lat`, `lon` and `seen_pos`. If your map uses only binary data, enable a compatible JSON endpoint in its receiver configuration before continuing. Use an IP literal in the URL; public hosts, DNS names and redirects are rejected. Ensure the FPP and receiver clocks are synchronized. Local reception does not depend on public tracking websites.
 
-## Install from this ZIP
+## Install from GitHub
 
-1. Copy the ZIP to the FPP device. SSH into FPP and extract it so the directory is exactly `/home/fpp/media/plugins/fpp-aircraft-blackout`.
-2. For a fresh installation, with the ZIP at `/home/fpp/fpp-aircraft-blackout-v0.1.0.zip`:
+For a fresh installation, stop the show and secure the fixtures independently. SSH into the FPP device and run:
 
-   ```bash
-   sudo unzip /home/fpp/fpp-aircraft-blackout-v0.1.0.zip -d /home/fpp/media/plugins
-   sudo chown -R fpp:fpp /home/fpp/media/plugins/fpp-aircraft-blackout
-   sudo bash /home/fpp/media/plugins/fpp-aircraft-blackout/scripts/fpp_install.sh
-   ```
+```bash
+cd /home/fpp/media/plugins
+git clone https://github.com/lindsayrobinson/fpp-aircraft-blackout.git
+cd fpp-aircraft-blackout
+sudo bash scripts/fpp_install.sh
+```
 
-3. When no show is running, restart FPPD using FPP's interface. This loads the native plugin.
-4. Open `http://FPP-IP:32380/`. Username: `admin`. Retrieve the generated password over SSH:
+Restart FPPD using the FPP web interface when no show is running. Open **Status/Control → Aircraft Blackout**, or this relative page on the FPP device:
 
-   ```bash
-   sudo cat /home/fpp/media/config/aircraft-blackout.key
-   ```
+```
+/plugin.php?plugin=fpp-aircraft-blackout&page=index.php
+```
 
-   FPP's plugin page also includes a link to the panel (`plugin.php?plugin=fpp-aircraft-blackout&page=index.php`).
+The page uses FPP's normal web access controls. There is no separate plugin password to enter and no port 32380 to open in your browser. The background monitor listens only on `127.0.0.1:32380`; FPP communicates with it locally using its retained internal credential.
 
-This package is a manual installation, not yet a GitHub-backed Plugin Manager release. No fabricated repository URL is included. A compiler and the installed FPP source/libfpp are required; the installer stops on build failure. Do not install the ADS-B receiver software on the FPP system itself.
+A compiler and the installed FPP source/libfpp are required; the installer stops on build failure. Do not install the ADS-B receiver software on the FPP device.
+
+## Upgrade from v0.1
+
+With the show stopped and fixtures secured:
+
+```bash
+cd /home/fpp/media/plugins/fpp-aircraft-blackout
+git pull --ff-only
+sudo bash scripts/fpp_install.sh
+```
+
+Restart FPPD through FPP and refresh the browser page. Existing receiver URL, location, radius, channel overrides and manual blackout setting are retained. The installer updates the service to listen locally and adds the FPP menu entry. Native hook activity must be checked again after the restart. If the directory is not a Git checkout, back it up and replace the plugin source with a fresh clone; configuration remains separately under `/home/fpp/media/config`.
+
+## Install from a source ZIP
+
+Extract the source so the installer is exactly `/home/fpp/media/plugins/fpp-aircraft-blackout/scripts/fpp_install.sh`. GitHub source archives may add a `-main` suffix to the folder; rename it before installation. Ensure the `fpp` user owns the plugin directory, run the installation script with `sudo`, and follow the same restart and FPP page steps above.
 
 ## Configure
 
@@ -97,7 +114,9 @@ Not all aircraft carry ADS-B OUT; one receiver cannot position every Mode-S-only
 - Lost-track faults do not clear just because a record ages out of the decoder. Acknowledge after checking the receiver and airspace; acknowledgement is accepted only when a fresh poll has no active/unknown-position aircraft, and still starts a full clear delay.
 - Logs: `sudo journalctl -u fpp-aircraft-blackout -n 100 --no-pager`
 - Service: `sudo systemctl status fpp-aircraft-blackout`
-- The settings panel listens on TCP 32380, protected by a generated password using HTTP Basic authentication. Use it on a trusted local/show VLAN; do not expose it to the internet. Permit FPP → receiver HTTP, and management PC → FPP TCP 32380 across VLANs if needed. No aircraft stream needs to reach the Falcon.
+- Settings and controls use FPP's own web interface and access controls. Keep FPP on a trusted network and use its normal authentication settings. The monitor listens only on loopback TCP 32380 and is accessed by a fixed-route PHP bridge; its credential never reaches the browser. If using VLANs, allow FPP → receiver HTTP and management PC → FPP's normal web port. No additional browser port or aircraft stream to the Falcon is needed.
+- If settings report a missing credential, run the installer. If the monitor is unavailable, check the service log. If a settings token expires after two hours, reload the FPP plugin page.
+- Existing authentication keys remain internal and are retained for upgrades; you no longer need to retrieve or type them to manage settings.
 - Configuration/password/blocked fallback live under `/home/fpp/media/config/aircraft-blackout.*`. Runtime snapshots and native heartbeat live in `/run/aircraft-blackout`; frequent snapshots avoid SD-card writes. Native fallback channels survive reboot, but permits are tied to the boot ID and expire.
 - After FPP upgrades, rebuild against installed headers using the install script, then restart FPPD and recheck native activity. The supplied preStart hook also invokes `make`.
 - Before uninstalling, stop the show and secure the lights independently. Uninstalling removes this protection. The uninstall hook disables the service and retains configuration; restart FPPD after plugin removal.
@@ -107,11 +126,12 @@ Not all aircraft carry ADS-B OUT; one receiver cannot position every Mode-S-only
 ```
 python3 -m unittest discover -s tests -v
 python3 tests/http_smoke.py
+python3 tests/php_bridge_smoke.py  # requires PHP CLI
 g++ -std=c++17 -Wall -Wextra -fsanitize=address,undefined tests/native_test.cpp -o /tmp/blackout-native-test
 ASAN_OPTIONS=detect_leaks=0 /tmp/blackout-native-test
 ```
 
-Python tests cover configurable location/radius, clear delays, stale/frozen data, unknown/lost positions, faults, persistence and feed failure. Native tests cover exact overrides, unchanged unrelated channels, observation mode, expiry, boot mismatch and malformed channel specifications. FPP adapter compiled against FPP 10.0 headers in the development environment; linking/loading and physical DMX behaviour need verification on the actual FPP device.
+Python tests cover configurable location/radius, clear delays, stale/frozen data, unknown/lost positions, faults, persistence and feed failure. The PHP integration test renders the FPP-style page and exercises persisted settings, status and manual controls through the real bridge, plus token/method validation and offline-monitor errors. Native tests cover exact overrides, unchanged unrelated channels, observation mode, expiry, boot mismatch and malformed channel specifications. FPP adapter compiled against FPP 10.0 headers in the development environment; linking/loading and physical DMX behaviour need verification on the actual FPP device.
 
 ## References
 

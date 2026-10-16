@@ -273,7 +273,6 @@ class App:
 
 
 def serve(app, host, port):
-    page = Path(__file__).with_name('index.html').read_bytes()
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -295,8 +294,7 @@ def serve(app, host, port):
             return True
         def do_GET(self):
             if not self.auth(): return
-            if self.path == '/': self.reply(200, page, 'text/html; charset=utf-8')
-            elif self.path == '/api/status': self.reply(200, app.snapshot())
+            if self.path == '/api/status': self.reply(200, app.snapshot())
             else: self.reply(404, {'error':'Not found'})
         def do_POST(self):
             if not self.auth(): return
@@ -341,7 +339,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config-dir', default='/home/fpp/media/config')
     parser.add_argument('--runtime-dir', default='/run/aircraft-blackout')
-    parser.add_argument('--host', default='0.0.0.0')
+    parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', default=32380, type=int)
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')

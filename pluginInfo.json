@@ -2,7 +2,17 @@
   "repoName": "fpp-aircraft-blackout",
   "name": "Aircraft Blackout",
   "author": "Lights on Elizabeth",
-  "description": "Local ADS-B exclusion zone monitoring with continuous moving-head DMX channel overrides. Prototype: bench testing required.",
-  "allowUpdates": 0,
-  "versions": [{"minFPPVersion": "10.0", "maxFPPVersion": "10.99", "branch": "main", "sha": ""}]
+  "description": "Local ADS-B blackout monitoring with settings and manual controls inside FPP. Prototype: bench testing required.",
+  "allowUpdates": 1,
+  "versions": [
+    {
+      "minFPPVersion": "10.0",
+      "maxFPPVersion": "10.99",
+      "branch": "main",
+      "sha": ""
+    }
+  ],
+  "homeURL": "https://github.com/lindsayrobinson/fpp-aircraft-blackout",
+  "srcURL": "https://github.com/lindsayrobinson/fpp-aircraft-blackout.git",
+  "bugURL": "https://github.com/lindsayrobinson/fpp-aircraft-blackout/issues"
 }
