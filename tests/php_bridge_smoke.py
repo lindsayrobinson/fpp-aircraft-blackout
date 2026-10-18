@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory() as temporary:
             except HTTPError as e: assert e.code==code, (e.code, e.read())
         s=api('status')
         c=s['config']
-        c.update(latitude=-27.25,longitude=153.1,radius_km=20,blackout_on_stale_positions=False,ignore_aircraft_without_position=True,channels=[{'channel':8,'value':0}])
+        c.update(latitude=-27.25,longitude=153.1,radius_km=20,blackout_on_stale_positions=False,ignore_aircraft_without_position=True,public_dashboard_url='https://lightsonelizabeth.com/aircraft/api.php',public_dashboard_key='b'*64,channels=[{'channel':8,'value':0}])
         assert api('config',c)['ok']
         s=api('status')
         assert s['config']['radius_km']==20
@@ -77,6 +77,10 @@ with tempfile.TemporaryDirectory() as temporary:
         assert 'ab-blackout_on_stale_positions' in html
         assert s['config']['ignore_aircraft_without_position'] is True
         assert 'ab-ignore_aircraft_without_position' in html
+        assert 'ab-public_dashboard_enabled' in html
+        assert 'ab-public_dashboard_url' in html
+        assert s['config']['public_dashboard_key']=='b'*64
+        assert s['config']['public_dashboard_enabled'] is False
         assert json.loads((cfg/'aircraft-blackout.json').read_text())['ignore_aircraft_without_position'] is True
         assert json.loads((cfg/'aircraft-blackout.json').read_text())['latitude']==-27.25
         assert api('manual',{'blackout':True})['ok']
