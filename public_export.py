@@ -18,10 +18,10 @@ def validate_public_settings(c):
         raise ValueError('Dashboard URL and upload key must be text')
     if url:
         u = urlsplit(url)
-        if (u.scheme != 'https' or u.hostname not in ('lightsonelizabeth.com', 'www.lightsonelizabeth.com')
+        if (u.scheme != 'https' or u.hostname not in ('lightsonelizabeth.com', 'www.lightsonelizabeth.com', 'linrob.net', 'www.linrob.net')
                 or u.port not in (None, 443) or u.username or u.password or u.query or u.fragment
                 or not u.path.endswith('/api.php')):
-            raise ValueError('Use the final https://lightsonelizabeth.com/aircraft/api.php URL (www is also allowed); redirects are not followed')
+            raise ValueError('Use the final HTTPS /aircraft/api.php URL on lightsonelizabeth.com or linrob.net (www is also allowed); redirects are not followed')
     if key and not re.fullmatch(r'[A-Za-z0-9_-]{32,128}', key):
         raise ValueError('Upload key must contain 32–128 letters, digits, underscores or hyphens')
     if c['public_dashboard_enabled'] and (not url or not key or c['latitude'] is None or c['longitude'] is None):
