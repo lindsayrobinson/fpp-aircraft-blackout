@@ -19,6 +19,10 @@ Monitor a local ADS-B receiver and continuously override selected moving-head DM
 - Fresh permission expires after 3 seconds if the monitor stops. The native hook checks expiry on every callback, independently of its background reader.
 - Receiver data stays local to this plugin. Your adsb.im feeder may separately share data according to its own settings.
 
+## Public aircraft map for Lights on Elizabeth
+
+An optional read-only dashboard is included in [`public-dashboard/`](public-dashboard/README.md). It shows aircraft on a map, your blackout zone and separate protection/blackout-request states. FPP sends an allowlisted update to your PHP website over HTTPS every 10 seconds in a separate worker; no incoming FPP connection is needed. Publishing is off by default. Follow the dashboard installation guide before enabling it in FPP.
+
 ## Before installation
 
 Confirm FPP version 10.x and that this FPP device sends the moving-head data to the Falcon. Keep the fixtures blacked out using an independent method during installation and commissioning. Have the moving-head DMX chart and FPP/Falcon channel mapping ready.

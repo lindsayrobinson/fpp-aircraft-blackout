@@ -17,11 +17,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHandler
 
+from public_export import PUBLIC_DEFAULTS, PublicPublisher, validate_public_settings, finite
+
 MAX_CHANNEL = 8192 * 1024
 DEFAULT = dict(receiver_url='', latitude=None, longitude=None, radius_km=15.0,
                clear_delay_s=60.0, max_feed_age_s=5.0, max_position_age_s=5.0,
                blackout_on_stale_positions=True, ignore_aircraft_without_position=False,
-               enforce=False, manual_blackout=False, channels=[])
+               enforce=False, manual_blackout=False, channels=[], **PUBLIC_DEFAULTS)
 LOG = logging.getLogger('aircraft-blackout')
 
 
@@ -84,6 +86,7 @@ def validate(raw):
         seen.add(ch)
     if c['enforce'] and (not c['channels'] or not c['receiver_url'] or c['latitude'] is None or c['longitude'] is None):
         raise ValueError('Set receiver URL, display coordinates and blackout channels before enabling enforcement')
+    validate_public_settings(c)
     return c
 
 
@@ -105,6 +108,7 @@ class Detector:
         self.last_feed_advance = None
         self.latest_blocked = True
         self.can_ack = False
+        self.aircraft_counts = dict(received=0, inside=0)
         self.acknowledge_reason = 'Waiting for valid receiver data before acknowledgement is available'
 
     def fault(self):
@@ -171,7 +175,7 @@ class Detector:
             position_status = ('Fresh position' if fresh else
                                'Stale position — ignored' if ident in ignored_stale else
                                'Stale position — blackout')
-            aircraft.append(dict(hex=ident, flight=str(a.get('flight', '')).strip(), distance_km=round(d, 2), position_age_s=round(age, 1), fresh=fresh, stale_ignored=ident in ignored_stale, blocking=ident in active or ident in unknown, position_status=position_status))
+            aircraft.append(dict(hex=ident, flight=str(a.get('flight', '')).strip(), distance_km=round(d, 2), latitude=lat, longitude=lon, altitude_ft=finite(a.get('alt_baro'), -2000, 100000), speed_kt=finite(a.get('gs'), 0, 2000), track_deg=finite(a.get('track'), 0, 360), inside_zone=d <= c['radius_km'], position_age_s=round(age + max(0, wall-stamp), 1), fresh=fresh, stale_ignored=ident in ignored_stale, blocking=ident in active or ident in unknown, position_status=position_status))
         self.hazards -= fresh_outside
         # Explicit user policy: old coordinates are ignored even if the last
         # fresh position was inside the zone. An existing fault latch still
@@ -215,6 +219,7 @@ class Detector:
         else:
             self.acknowledge_reason = 'No latched fault needs acknowledgement'
         self.latest_blocked = blocked
+        self.aircraft_counts = dict(received=len(aircraft), inside=sum(bool(a.get('fresh') and a.get('inside_zone')) for a in aircraft))
         return blocked, reason, sorted(aircraft, key=lambda a: (not a['blocking'], a['distance_km'] if a['distance_km'] is not None else -1))[:100]
 
 
@@ -241,6 +246,7 @@ class App:
             atomic_write(key_path, secrets.token_urlsafe(24), 0o600)
         self.key = key_path.read_text().strip()
         self.opener = build_opener(ProxyHandler({}), NoRedirect())
+        self.public_publisher = PublicPublisher(self)
         self.publish(False, persistent=True)
 
     def publish(self, permit, persistent=False):
@@ -285,15 +291,17 @@ class App:
                 if error:
                     raise ValueError(error)
                 blocked, reason, aircraft = self.detector.evaluate(feed, c, time.time(), time.monotonic())
+                receiver_ok = True
             except Exception as exc:
                 self.detector.fault()
+                receiver_ok = False
                 blocked, reason, aircraft = True, 'Receiver fault: '+str(exc), []
             if c['manual_blackout']:
                 blocked, reason = True, 'Manual blackout'
             self.publish(not blocked)
             previous = self.status.get('reason')
             self.status = dict(blocked=blocked, reason=reason, aircraft=aircraft, updated=time.time(),
-                               enforcement=c['enforce'], fault_latched=self.detector.fault_latched)
+                               aircraft_counts=copy.deepcopy(self.detector.aircraft_counts) if receiver_ok else dict(received=0, inside=0), enforcement=c['enforce'], fault_latched=self.detector.fault_latched, receiver_ok=receiver_ok)
             if reason != previous and not reason.startswith('Clear hold:'):
                 LOG.info('%s', reason)
 
@@ -301,6 +309,7 @@ class App:
         with self.lock:
             s = copy.deepcopy(self.status)
             s['config'] = copy.deepcopy(self.config)
+            s['public_push'] = self.public_publisher.snapshot()
             s['can_acknowledge'] = self.detector.can_ack
             s['acknowledge_reason'] = self.detector.acknowledge_reason
             try:
@@ -363,6 +372,7 @@ def serve(app, host, port):
             except (ValueError, TypeError, KeyError) as exc:
                 self.reply(400, {'error':str(exc)})
     server = ThreadingHTTPServer((host, port), Handler)
+    app.public_publisher.start()
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -371,6 +381,7 @@ def serve(app, host, port):
             app.poll()
             time.sleep(max(.05, 1-(time.monotonic()-start)))
     finally:
+        app.public_publisher.stop.set()
         with app.lock: app.publish(False)
         server.shutdown()
 
