@@ -24,6 +24,15 @@ class PublicExportTests(unittest.TestCase):
             app=m.App(Path(tmp)/'cfg',Path(tmp)/'run');app.save(c)
             self.assertTrue(m.App(Path(tmp)/'cfg',Path(tmp)/'run').config['public_dashboard_enabled'])
 
+    def test_linrob_dashboard_destination(self):
+        c=self.config();c['public_dashboard_enabled']=True
+        for host in ('linrob.net','www.linrob.net','lightsonelizabeth.com','www.lightsonelizabeth.com'):
+            with self.subTest(host=host):
+                c['public_dashboard_url']='https://'+host+'/aircraft/api.php'
+                self.assertEqual(m.validate(c)['public_dashboard_url'],c['public_dashboard_url'])
+        for url in ('http://linrob.net/aircraft/api.php','https://linrob.net.evil.com/aircraft/api.php','https://linrob.net@evil.com/aircraft/api.php','https://linrob.net:444/aircraft/api.php'):
+            with self.subTest(url=url),self.assertRaises(ValueError):m.validate({**c,'public_dashboard_url':url})
+
     def test_projection_hides_secrets_and_raw_errors(self):
         s=dict(config=self.config(),updated=100,blocked=True,receiver_ok=False,reason='Receiver fault: private URL and credential',native={},aircraft=[])
         data=public_snapshot(s,100);wire=json.dumps(data)
