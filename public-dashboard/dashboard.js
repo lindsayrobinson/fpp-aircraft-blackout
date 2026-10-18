@@ -28,7 +28,7 @@
   function draw(s) {
     if(!window.L){get('map').textContent='The map library could not load. Aircraft details remain available below.';return;}
     const z=s.zone,key=JSON.stringify(z);
-    if(!map){get('map').replaceChildren();map=L.map('map');L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);layers=L.layerGroup().addTo(map);}
+    if(!map){get('map').replaceChildren();map=L.map('map').setView([z.latitude,z.longitude],11);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);layers=L.layerGroup().addTo(map);}
     if(key!==zoneKey){zoneKey=key;if(circle)circle.remove();if(center)center.remove();circle=L.circle([z.latitude,z.longitude],{radius:z.radius_km*1000,color:'#c83236',weight:2,fillColor:'#e75958',fillOpacity:.10}).addTo(map);center=L.circleMarker([z.latitude,z.longitude],{radius:5,color:'#102d36',fillColor:'#f0cf85',fillOpacity:1}).addTo(map).bindTooltip('Lights on Elizabeth');map.fitBounds(circle.getBounds(),{padding:[25,25]});get('recenter').disabled=false;}
     layers.clearLayers();
     for(const a of s.aircraft){if(!Number.isFinite(a.latitude)||!Number.isFinite(a.longitude))continue;const popup=document.createElement('div');for(const line of [a.flight||a.hex,'Distance: '+number(a.distance_km,' km'),'Altitude: '+number(a.altitude_ft,' ft'),'Speed: '+number(a.speed_kt,' kt'),positionText(a)]){const p=document.createElement('div');p.textContent=line;popup.append(p);}L.marker([a.latitude,a.longitude],{icon:planeIcon(a),title:a.flight||a.hex,opacity:a.fresh?1:.65}).addTo(layers).bindPopup(popup);}
@@ -48,7 +48,8 @@
     for(const a of rows){const row=document.createElement('tr');row.dataset.inside=String(a.fresh&&a.inside_zone);for(const [i,v] of [a.flight||a.hex,number(a.distance_km,' km'),number(a.altitude_ft,' ft'),number(a.speed_kt,' kt'),positionText(a)].entries()){const cell=document.createElement('td');cell.textContent=v;if(i===0&&a.flight){const small=document.createElement('small');small.textContent=a.hex;cell.append(small);}row.append(cell);}get('aircraft').append(row);}
     if(!rows.length)emptyTable('No aircraft records received. An empty list does not establish clear airspace.');
     get('table-note').textContent=`${rows.length} of ${s.aircraft_count} received records shown (up to 100). Aircraft without usable coordinates appear only in this table.`;
-    draw(s);
+    // Map failures must not overwrite valid controller status or aircraft details.
+    try{draw(s);}catch(e){get('map-note').textContent='Map unavailable. Aircraft details and controller status remain available below.';}
   }
   function tick(){if(!latest)return;const age=initialAge+(performance.now()-received)/1000;if(age>30){if(!expired)unavailable('Updates have stopped. The previous blackout status is no longer current.');return;}if(!expired)get('updated').textContent='Data age: '+Math.floor(age)+'s · '+new Date(latest.observed_at*1000).toLocaleTimeString();}
   async function refresh(){
