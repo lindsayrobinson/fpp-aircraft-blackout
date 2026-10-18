@@ -2,11 +2,11 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const code=fs.readFileSync(path.join(__dirname,'../public-dashboard/dashboard.js'),'utf8');
 function element(){return {textContent:'',dataset:{},children:[],disabled:false,append(...x){this.children.push(...x)},replaceChildren(...x){this.children=x},addEventListener(){}}}
-async function check(data){
+async function check(data, mapFails=false){
  const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id)};
- let clock=0,tick;const plotted=[];
- const layer=()=>({addTo(){return this},remove(){},bindTooltip(){return this},bindPopup(content){this.popup=content;return this},getBounds(){return []},clearLayers(){plotted.length=0}});
- const L={map:()=>({fitBounds(){}}),tileLayer:layer,layerGroup:layer,circle:layer,circleMarker:layer,divIcon:x=>x,marker:(coords,options)=>{plotted.push({coords,options});return layer()}};
+ let clock=0,tick,mapReady=false;const plotted=[];
+ const layer=()=>({addTo(){return this},remove(){},bindTooltip(){return this},bindPopup(content){this.popup=content;return this},getBounds(){assert.ok(mapReady,'Circle bounds require an initialized map view');return []},clearLayers(){plotted.length=0}});
+ const L={map:()=>({setView(){if(mapFails)throw Error('Map failed');mapReady=true;return this},fitBounds(){assert.ok(mapReady)}}),tileLayer:layer,layerGroup:layer,circle:layer,circleMarker:layer,divIcon:x=>x,marker:(coords,options)=>{plotted.push({coords,options});return layer()}};
  const context={document:{getElementById:get,createElement:element},window:{L},L,performance:{now:()=>clock},Date,AbortController,setInterval(fn){tick=fn},setTimeout(){return 1},clearTimeout(){},fetch:async()=>({ok:true,json:async()=>data})};
  vm.runInNewContext(code,context);await new Promise(setImmediate);
  return {get,plotted,expire(){clock=31000;tick()}};
@@ -20,6 +20,7 @@ async function check(data){
  ui.expire();assert.equal(ui.get('blackout').textContent,'Status unavailable');assert.equal(ui.get('protection').textContent,'Status unavailable');assert.equal(ui.plotted.length,0);
  ui=await check({fresh:true,age_s:1,snapshot:{...s,enforcement_enabled:true,blackout_requested:false,reason_code:'clear'}});
  assert.equal(ui.get('protection').textContent,'Enabled');assert.equal(ui.get('blackout').textContent,'Not requested');
+ ui=await check({fresh:true,age_s:0,snapshot:s},true);assert.equal(ui.get('protection').textContent,'Disabled');assert.equal(ui.get('blackout').textContent,'Requested');assert.match(ui.get('map-note').textContent,/Map unavailable/);
  ui=await check({fresh:false,age_s:40,snapshot:null});assert.equal(ui.get('inside').textContent,'—');assert.equal(ui.plotted.length,0);
  console.log('Public dashboard UI passed: map markers/zone, independent states, unknown positions, text injection and automatic expiry.');
 })();
